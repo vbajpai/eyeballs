@@ -28,6 +28,8 @@
  * policies, either expressed or implied, of the FreeBSD Project.
  */
 
+#define _GNU_SOURCE
+
 #include <stdlib.h>
 #include <sys/types.h>
 #include <netinet/in.h>
