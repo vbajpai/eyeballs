@@ -32,6 +32,7 @@
 #include <sys/types.h>
 #include <netinet/in.h>
 #include <arpa/nameser.h>
+#include <arpa/inet.h>
 #include <resolv.h>
 #include <netdb.h>
 #include <errno.h>
@@ -77,39 +78,11 @@ int main(int argc, char* argv[]) {
      )
     herror("ns_initparse(...)");
 
-#ifdef VERBOSE
-  /* get msg_id */
-  u_int16_t msg_id = ns_msg_id(handle);
-  printf("\nmsg_id: %u", msg_id);
-
-  /* get msg_count */
-  u_int16_t qd_count = ns_msg_count(handle, ns_s_qd);
-  u_int16_t an_count = ns_msg_count(handle, ns_s_an);
-  u_int16_t ns_count = ns_msg_count(handle, ns_s_ns);
-  u_int16_t ar_count = ns_msg_count(handle, ns_s_ar);
-  printf("\nqd_count: %u", qd_count);
-  printf("\nan_count: %u", an_count);
-  printf("\nns_count: %u", ns_count);
-  printf("\nar_count: %u", ar_count);
-#endif
-
-#ifdef DEBUG
-  res_pquery(&_res, answer, answerlen, stdout);
-  do_section(&_res, &handle, ns_s_an, stdout);
-#endif
-
-  /* allocate buffer to store the response in presentation format */
-  static int buflen = 2048;
-  char* buf = malloc(buflen);
-  if (buf == NULL) {
-    perror("malloc(...)");
-    exit(EXIT_FAILURE);
-  }
-
+  /* iterate over each resource record */
   ns_rr rr;
-  for (int rrnum = 0;;) {
+  for (int rrnum = 0; ; rrnum++) {
 
-    /* parse a resource record section */
+    /* parse the answer section of the resource record */
     if (
         ns_parserr(
                    &handle, /* data structure filled by ns_initparse */
@@ -118,50 +91,86 @@ int main(int argc, char* argv[]) {
                    &rr      /* data structure filled in by ns_parseerr */
                   ) < 0
        ) {
+
+      /* continue to the next resource records it this cannot be parsed */
       if (errno != ENODEV) {
         herror("ns_parserr(...)");
-        exit(EXIT_FAILURE);
+        continue;
       }
+      
       /* break out of the loop when all resource records have been read */
       break;
     }
 
-#ifdef VERBOSE
-      printf("\nns_rr_name: %s", ns_rr_name(rr));
-      printf("\nns_rr_type: %u", ns_rr_type(rr));
-      printf("\nns_rr_class: %u", ns_rr_class(rr));
-      printf("\nns_rr_ttl: %u", ns_rr_ttl(rr));
-      printf("\nns_rr_rdlen: %u", ns_rr_rdlen(rr));
-      printf("\nns_rr_rdata: %s", ns_rr_rdata(rr));
-#endif    
-
-
-    /* get RR in a presentation format */
-    if (
-        ns_sprintrr(
-                    &handle, /* data structure filled by ns_initparse */
-                    &rr,     /* data structure filled by ns_parseerr */
-                    NULL,    /* (const char*) name_ctx */
-                    NULL,    /* (const char *) origin */
-                    buf,     /* presentation buffer */
-                    buflen   /* presentation buffer size */
-                   ) < 0
-       ) {
-      if (errno == ENOSPC) {
-        free(buf); buf = NULL;
-        if (buflen < 131072)
-          buf = malloc(buflen += 1024);
-        if (buf == NULL) {
-          perror("malloc(...)");
+    /* get A and AAAA in a presentation format */
+    char* dst = NULL;
+    switch (ns_rr_type(rr)) {
+        
+      /* type: A record */
+      case ns_t_a:
+        if (ns_rr_rdlen(rr) != (size_t)NS_INADDRSZ) {
+          fprintf(stderr, "RR format error");
+          break;
+        }
+        dst = calloc(1, INET_ADDRSTRLEN);
+        if (dst == NULL) {
+          perror("calloc(...)");
           exit(EXIT_FAILURE);
         }
-        rrnum--; continue;
-      }
-      herror("ns_sprintrr(...)"); 
-      free(buf); buf = NULL;
+        if (
+             inet_ntop(
+                       AF_INET,         /* IPv4 address format */
+                       ns_rr_rdata(rr), /* src address in network format */
+                       dst,             /* dst address in presentation format */
+                       INET_ADDRSTRLEN  /* size of dst address */
+                      ) == NULL
+           ) {
+          perror("inet_ntop(...)");
+          free(dst); dst = NULL;          
+          break;
+        }
+        break;
+
+      /* type: AAAA record */        
+      case ns_t_aaaa:
+        if (ns_rr_rdlen(rr) != (size_t)NS_IN6ADDRSZ) {
+          fprintf(stderr, "RR format error");
+          break;
+        }
+        dst = calloc(1, INET6_ADDRSTRLEN);
+        if (dst == NULL) {
+          perror("calloc(...)");
+          exit(EXIT_FAILURE);
+        }
+        if (
+            inet_ntop(
+                      AF_INET6,         /* IPv6 address format */
+                      ns_rr_rdata(rr),  /* src address in network format */
+                      dst,              /* dst address in presentation format */
+                      INET6_ADDRSTRLEN  /* size of dst address */
+                     ) == NULL
+           ) {
+          perror("inet_ntop(...)");
+          free(dst); dst = NULL;
+          break;
+        }
+        break;
+
+      /* type: CNAME record */
+      case ns_t_cname:
+        fprintf(stderr, "CNAME\n");
+        break;
+        
+      /* ignore all the other types */
+      default:
+        break;
     }
-    fputs(buf, stdout); fputc('\n', stdout);
-    rrnum++;
+ 
+    /* echo the presentation format */
+    if (dst != NULL) {
+      fputs(dst, stdout); fputc('\n', stdout);
+      free(dst); dst = NULL;
+    }
   }  
 
   return(EXIT_SUCCESS);
