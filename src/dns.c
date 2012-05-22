@@ -37,78 +37,6 @@
 #include <errno.h>
 #include <string.h>
 
-static void
-do_section(const res_state statp,
-           ns_msg *handle, 
-           ns_sect section,
-           FILE *file) {
-
-  int n, rrnum;
-  static int buflen = 2048;
-  char *buf;
-  ns_opcode opcode;
-  ns_rr rr;
-
-  buf = malloc(buflen);
-  if (buf == NULL) {
-    fprintf(file, ";; memory allocation failure\n");
-    return;
-  }
-
-  opcode = (ns_opcode) ns_msg_getflag(*handle, ns_f_opcode);
-  rrnum = 0;
-  for (;;) {
-    if (ns_parserr(handle, section, rrnum, &rr)) {
-      if (errno != ENODEV)
-        fprintf(file, ";; ns_parserr: %s\n",
-          strerror(errno));
-      else if (rrnum > 0)
-        putc('\n', file);
-      goto cleanup;
-    }
-    if (rrnum == 0)
-      fprintf(file, ";; %s SECTION:\n",
-        p_section(section, opcode));
-    if (section == ns_s_qd)
-      fprintf(file, ";;\t%s, type = %s, class = %s\n",
-        ns_rr_name(rr),
-        p_type(ns_rr_type(rr)),
-        p_class(ns_rr_class(rr)));
-    else if (section == ns_s_ar && ns_rr_type(rr) == ns_t_opt) {
-      u_int32_t ttl = ns_rr_ttl(rr);
-      fprintf(file,
-        "; EDNS: version: %u, udp=%u, flags=%04x\n",
-        (ttl>>16)&0xff, ns_rr_class(rr), ttl&0xffff);
-    } else {
-      n = ns_sprintrr(handle, &rr, NULL, NULL,
-          buf, buflen);
-      if (n < 0) {
-        if (errno == ENOSPC) {
-          free(buf);
-          buf = NULL;
-          if (buflen < 131072)
-            buf = malloc(buflen += 1024);
-          if (buf == NULL) {
-            fprintf(file,
-                      ";; memory allocation failure\n");
-                return;
-          }
-          continue;
-        }
-        fprintf(file, ";; ns_sprintrr: %s\n",
-          strerror(errno));
-        goto cleanup;
-      }
-      fputs(buf, file);
-      fputc('\n', file);
-    }
-    rrnum++;
-  }
- cleanup:
-  if (buf != NULL)
-    free(buf);
-} 
-
 int main(int argc, char* argv[]) {
 
   /* create a query message */
@@ -148,11 +76,8 @@ int main(int argc, char* argv[]) {
                   ) < 0
      )
     herror("ns_initparse(...)");
-#ifdef DEBUG
-  res_pquery(&_res, answer, answerlen, stdout);
-#endif
-  do_section(&_res, &handle, ns_s_an, stdout);
 
+#ifdef VERBOSE
   /* get msg_id */
   u_int16_t msg_id = ns_msg_id(handle);
   printf("\nmsg_id: %u", msg_id);
@@ -166,42 +91,78 @@ int main(int argc, char* argv[]) {
   printf("\nan_count: %u", an_count);
   printf("\nns_count: %u", ns_count);
   printf("\nar_count: %u", ar_count);
-  
-  /* parse a resource record section */
-  ns_rr rr;
-  if (
-      ns_parserr(
-                 &handle,    /* data structure filled by ns_initparse */
-                 ns_s_an,    /* resource record section */
-                 1,          /* index of the resource record in this section */   
-                 &rr         /* data structure filled in by ns_parseerr */
-                ) < 0
-     )   
-    herror("ns_parserr(...)");
-#ifdef DEBUG
-  printf("\nns_rr_name: %s", ns_rr_name(rr));
-  printf("\nns_rr_type: %u", ns_rr_type(rr));
-  printf("\nns_rr_class: %u", ns_rr_class(rr));
-  printf("\nns_rr_ttl: %u", ns_rr_ttl(rr));
-  printf("\nns_rr_rdlen: %u", ns_rr_rdlen(rr));
-  printf("\nns_rr_rdata: %s", ns_rr_rdata(rr));
 #endif
 
-  /* get RR in a presentation format */
-  char buf[100];
-  if (
-      ns_sprintrr(
-                  &handle,
-                  &rr,
-                  NULL,
-                  NULL,
-                  (char*) &buf,
-                  sizeof(buf)
-                 ) < 0
-     )
-    herror("ns_sprintrr(...)");  
 #ifdef DEBUG
-  printf("\nbuffer: %s", buf);
+  res_pquery(&_res, answer, answerlen, stdout);
+  do_section(&_res, &handle, ns_s_an, stdout);
 #endif
+
+  /* allocate buffer to store the response in presentation format */
+  static int buflen = 2048;
+  char* buf = malloc(buflen);
+  if (buf == NULL) {
+    perror("malloc(...)");
+    exit(EXIT_FAILURE);
+  }
+
+  ns_rr rr;
+  for (int rrnum = 0;;) {
+
+    /* parse a resource record section */
+    if (
+        ns_parserr(
+                   &handle, /* data structure filled by ns_initparse */
+                   ns_s_an, /* resource record answer section */
+                   rrnum,   /* index of the resource record in this section */
+                   &rr      /* data structure filled in by ns_parseerr */
+                  ) < 0
+       ) {
+      if (errno != ENODEV) {
+        herror("ns_parserr(...)");
+        exit(EXIT_FAILURE);
+      }
+      /* break out of the loop when all resource records have been read */
+      break;
+    }
+
+#ifdef VERBOSE
+      printf("\nns_rr_name: %s", ns_rr_name(rr));
+      printf("\nns_rr_type: %u", ns_rr_type(rr));
+      printf("\nns_rr_class: %u", ns_rr_class(rr));
+      printf("\nns_rr_ttl: %u", ns_rr_ttl(rr));
+      printf("\nns_rr_rdlen: %u", ns_rr_rdlen(rr));
+      printf("\nns_rr_rdata: %s", ns_rr_rdata(rr));
+#endif    
+
+
+    /* get RR in a presentation format */
+    if (
+        ns_sprintrr(
+                    &handle, /* data structure filled by ns_initparse */
+                    &rr,     /* data structure filled by ns_parseerr */
+                    NULL,    /* (const char*) name_ctx */
+                    NULL,    /* (const char *) origin */
+                    buf,     /* presentation buffer */
+                    buflen   /* presentation buffer size */
+                   ) < 0
+       ) {
+      if (errno == ENOSPC) {
+        free(buf); buf = NULL;
+        if (buflen < 131072)
+          buf = malloc(buflen += 1024);
+        if (buf == NULL) {
+          perror("malloc(...)");
+          exit(EXIT_FAILURE);
+        }
+        rrnum--; continue;
+      }
+      herror("ns_sprintrr(...)"); 
+      free(buf); buf = NULL;
+    }
+    fputs(buf, stdout); fputc('\n', stdout);
+    rrnum++;
+  }  
+
   return(EXIT_SUCCESS);
 }
