@@ -42,10 +42,11 @@
 #define DEFAULT_NS "8.8.8.8"
 #define DEFAULT_DNS_PORT 53
 
-void
-echoaddr(
+char** 
+parse_response(
          const u_char* const answer,
-         const int answerlen
+         const int answerlen,
+         int* buflen
         ) {
 
   /* initialize data structure to store the parsed response */
@@ -60,8 +61,13 @@ echoaddr(
     herror("ns_initparse(...)");
 
   /* iterate over each resource record */
-  ns_rr rr;
-  for (int rrnum = 0; ; rrnum++) {
+  int rrnum = 0;
+  char** dstset = calloc(1, sizeof(char*));
+  if (dstset == NULL) {
+    perror("calloc(...)");
+    exit(EXIT_FAILURE);
+  }
+  for (ns_rr rr; ; rrnum++) {
 
     /* parse the answer section of the resource record */
     if (
@@ -127,7 +133,7 @@ echoaddr(
             inet_ntop(
                       AF_INET6,         /* IPv6 address format */
                       ns_rr_rdata(rr),  /* src address in network format */
-                      dst,              /* dst address in presentation format */
+                      dst,       /* dst address in presentation format */
                       INET6_ADDRSTRLEN  /* size of dst address */
                       ) == NULL
             ) {
@@ -139,21 +145,21 @@ echoaddr(
 
       /* type: CNAME record */
       case ns_t_cname:
-        fprintf(stderr, "CNAME\n");
+        dst = strdup("CNAME");
         break;
 
       /* ignore all the other types */
       default:
         break;
     }
+    
+    dstset = realloc(dstset, (rrnum + 1) * sizeof(char*));
+    dstset[rrnum] = dst;
 
-    /* echo the presentation format */
-    if (dst != NULL) {
-      fputs(dst, stdout); fputc('\n', stdout);
-      free(dst); dst = NULL;
-    }
   }
-
+  
+  *buflen = rrnum;
+  return dstset;
 }
 
 int
@@ -198,31 +204,35 @@ send_query(
   return sockfd;
 }
 
-void receive_response_and_echo(
-                               int sockfd
-                              ) {
+ssize_t
+receive_response(
+                 int sockfd,
+                 const u_char* const answer,
+                 const int answerlen
+                ) {
 
   /* receive answer using the provided socket */
-  u_char answer[NS_PACKETSZ];
-  ssize_t answerlen = recvfrom (
-                                sockfd,         /* socket descriptor */
-                                answer,         /* receive buffer */
-                                NS_PACKETSZ,    /* receive buffer length */
-                                0,              /* flags */
-                                NULL,           /* source address */
-                                NULL            /* source address length */
-                               );
-  if (answerlen < 0) {
+  ssize_t truelen = recvfrom (
+                              sockfd,         /* socket descriptor */
+                              (void*)answer,  /* receive buffer */
+                              answerlen,      /* receive buffer length */
+                              0,              /* flags */
+                              NULL,           /* source address */
+                              NULL            /* source address length */
+                             );
+  if (truelen < 0) {
     perror("recvfrom(...)");
-    return;
+    return -1;
   }
 
-  /* echo the answer */
-  echoaddr(answer, answerlen);
+  return truelen;
 
 }
 
-int main(int argc, char* argv[]) {
+int main(
+         int argc, 
+         char* argv[]
+        ) {
 
   /* parse command line arguments */
   int opt; char* ns = NULL; char* domain = NULL;
@@ -350,11 +360,48 @@ int main(int argc, char* argv[]) {
 
         /* one or more descriptors are ready */
         if(FD_ISSET(sockv4query, &readfds)) {
-          receive_response_and_echo(sockv4query);
+          u_char answer[NS_PACKETSZ];
+          ssize_t 
+          answerlen = receive_response(
+                                       sockv4query, /* socket descriptor */
+                                       answer,      /* receive buffer */
+                                       NS_PACKETSZ  /* receive buffer length */
+                                      );
+
+          /* parse the received response */
+          char** bufset = calloc(1, sizeof(char*)); int buflen = 0;
+          if (bufset == NULL) {
+            perror("calloc(...)");
+            exit(EXIT_FAILURE);
+          }
+          bufset = parse_response(
+                                  answer,    /* received response */
+                                  answerlen, /* true response length */
+                                  &buflen    /* receive buffer length */
+                                 );
+          /* echo the parsed response*/
+          for(int i = 0; i < buflen; i++)  puts(bufset[i]);
           waiting -= 1;
         }
+        
         if(FD_ISSET(sockv6query, &readfds)) {
-          receive_response_and_echo(sockv6query);
+          u_char answer[NS_PACKETSZ];
+          ssize_t 
+          answerlen = receive_response(
+                                       sockv6query, /* socket descriptor */
+                                       answer,      /* receive buffer */
+                                       NS_PACKETSZ  /* receive buffer length */
+                                       );
+
+          /* parse the received response */
+          int buflen = 0;
+          char** bufset = parse_response(
+                                         answer,    /* received response */
+                                         answerlen, /* true response length */
+                                         &buflen    /* receive buffer length */
+                                        ); 
+          /* echo the parsed response */
+          for(int i = 0; i < buflen; i++)  puts(bufset[i]);
           waiting -= 1;
         }
       }
