@@ -28,8 +28,6 @@
  * policies, either expressed or implied, of the FreeBSD Project.
  */
 
-#define _GNU_SOURCE
-
 #include <stdlib.h>
 #include <sys/types.h>
 #include <netinet/in.h>
@@ -39,16 +37,44 @@
 #include <netdb.h>
 #include <errno.h>
 #include <string.h>
+#include <unistd.h>
 
 int main(int argc, char* argv[]) {
+
+  /* parse command line arguments */
+  int opt; char* ns = NULL; char* domain = NULL;
+  ns_type type = ns_t_a;
+  while ((opt = getopt(argc, argv, "s:t:")) != -1) {
+    switch (opt) {
+      case 's': 
+        ns = optarg; break;
+      case 't': 
+        if (strcmp(optarg, "A") == 0) type = ns_t_a;
+        else if (strcmp(optarg, "AAAA") == 0) type = ns_t_aaaa;
+        else {
+          fprintf(stderr, "invalid type: (%s)\n", optarg);
+          exit(EXIT_FAILURE);
+        }
+        break; 
+    }
+  }
+
+  if (ns != NULL) printf("selected nameserver: %s\n", ns);
+
+  if (argc != optind + 1) {
+    printf("usage: %s [-s namesever] host", argv[0]);
+    exit(EXIT_FAILURE);
+  } else
+    domain = argv[optind];
+
 
   /* create a query message */
   u_char msg[NS_PACKETSZ];
   int msglen = res_mkquery(
                            ns_o_query,          /* regular query */
-                           argv[1],             /* domain name to look up */
+                           domain,              /* domain name to look up */
                            ns_c_in,             /* internet type */
-                           ns_t_a,              /* A record to look up */
+                           type,                /* type of record to look up */
                            NULL,                /* always NULL for QUERY */
                            0,                   /* length of NULL */
                            (u_char*) NULL,      /* always NULL */
