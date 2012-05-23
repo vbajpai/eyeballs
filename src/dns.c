@@ -3,28 +3,28 @@
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions are met: 
+ * modification, are permitted provided that the following conditions are met:
  *
- * 1. Redistributions of source code must retain the above copyright notice, 
- *    this list of conditions and the following disclaimer. 
+ * 1. Redistributions of source code must retain the above copyright notice,
+ *    this list of conditions and the following disclaimer.
  * 2. Redistributions in binary form must reproduce the above copyright notice,
  *    this list of conditions and the following disclaimer in the documentation
- *    and/or other materials provided with the distribution. 
+ *    and/or other materials provided with the distribution.
  *
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
- * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE 
+ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
  * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE 
+ * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE
  * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
- * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF 
+ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
  * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
- * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN 
- * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) 
+ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
  *
- * The views and conclusions contained in the software and documentation are 
- * those of the authors and should not be interpreted as representing official 
+ * The views and conclusions contained in the software and documentation are
+ * those of the authors and should not be interpreted as representing official
  * policies, either expressed or implied, of the FreeBSD Project.
  */
 
@@ -92,12 +92,12 @@ int main(int argc, char* argv[]) {
                   ) < 0
        ) {
 
-      /* continue to the next resource records it this cannot be parsed */
+      /* continue to the next resource records if this cannot be parsed */
       if (errno != ENODEV) {
         herror("ns_parserr(...)");
         continue;
       }
-      
+
       /* break out of the loop when all resource records have been read */
       break;
     }
@@ -105,7 +105,7 @@ int main(int argc, char* argv[]) {
     /* get A and AAAA in a presentation format */
     char* dst = NULL;
     switch (ns_rr_type(rr)) {
-        
+
       /* type: A record */
       case ns_t_a:
         if (ns_rr_rdlen(rr) != (size_t)NS_INADDRSZ) {
@@ -126,12 +126,12 @@ int main(int argc, char* argv[]) {
                       ) == NULL
            ) {
           perror("inet_ntop(...)");
-          free(dst); dst = NULL;          
+          free(dst); dst = NULL;
           break;
         }
         break;
 
-      /* type: AAAA record */        
+      /* type: AAAA record */
       case ns_t_aaaa:
         if (ns_rr_rdlen(rr) != (size_t)NS_IN6ADDRSZ) {
           fprintf(stderr, "RR format error");
@@ -160,7 +160,7 @@ int main(int argc, char* argv[]) {
       case ns_t_cname:
         fprintf(stderr, "CNAME\n");
         break;
-        
+
       /* ignore all the other types */
       default:
         break;
@@ -171,7 +171,7 @@ int main(int argc, char* argv[]) {
       fputs(dst, stdout); fputc('\n', stdout);
       free(dst); dst = NULL;
     }
-  }  
+  }
 
   return(EXIT_SUCCESS);
 }
