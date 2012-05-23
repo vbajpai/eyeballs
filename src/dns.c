@@ -159,115 +159,109 @@ int main(int argc, char* argv[]) {
 
   /* parse command line arguments */
   int opt; char* ns = NULL; char* domain = NULL;
-  ns_type type = ns_t_a;
   while ((opt = getopt(argc, argv, "s:t:")) != -1) {
     switch (opt) {
       case 's': 
         ns = optarg; break;
-      case 't': 
-        if (strcmp(optarg, "A") == 0) type = ns_t_a;
-        else if (strcmp(optarg, "AAAA") == 0) type = ns_t_aaaa;
-        else {
-          fprintf(stderr, "invalid type: (%s)\n", optarg);
-          exit(EXIT_FAILURE);
-        }
-        break; 
     }
-  }
-
-  if (argc != optind + 1) {
+  }  
+  if (argc == optind) {
     printf("usage: %s [-s namesever] host", argv[0]);
     exit(EXIT_FAILURE);
-  } else
-    domain = argv[optind];
-
+  }
+  
   /* change the default behavior of resolver routines */
   res_init();
   _res.nscount = 1;
   if (ns == NULL) ns = DEFAULT_NS;
   if (
-       inet_pton(
-                 AF_INET,                       /* IPv4 address format */
-                 ns,                            /* ns in presentation format */
-                 &_res.nsaddr_list[0].sin_addr  /* ns in network format */
+      inet_pton(
+                AF_INET,                         /* IPv4 address fmt */
+                ns,                              /* ns in presentation fmt */
+                &_res.nsaddr_list[0].sin_addr    /* ns in network fmt */
                 ) <= 0
-     ) {
-         perror("inet_pton(...)");
-         exit(EXIT_FAILURE);
+      ) {
+    perror("inet_pton(...)");
+    exit(EXIT_FAILURE);
   }
-
+  
   ns = calloc(1, INET_ADDRSTRLEN);
   if (
-       inet_ntop(
-                 AF_INET,                       /* IPv4 address format */
-                 &_res.nsaddr_list[0].sin_addr, /* ns in network format */
-                 ns,                            /* ns in presentation format */
-                 INET_ADDRSTRLEN                /* size of dst address */
+      inet_ntop(
+                AF_INET,                         /* IPv4 address fmt */
+                &_res.nsaddr_list[0].sin_addr,   /* ns in network fmt */
+                ns,                              /* ns in presentation fmt */
+                INET_ADDRSTRLEN                  /* size of dst address */
                 ) == NULL
-     ) {
-         perror("inet_ntop(...)");
-         exit(EXIT_FAILURE);
+      ) {
+    perror("inet_ntop(...)");
+    exit(EXIT_FAILURE);
   }
   printf("using nameserver: %s\n", ns);
   free(ns); ns = NULL;
-
-  /* create a A query message */
-  u_char msg4[NS_PACKETSZ];
-  int msg4len = res_mkquery(
-                            ns_o_query,          /* regular query */
-                            domain,              /* domain name to look up */
-                            ns_c_in,             /* internet type */
-                            ns_t_a,              /* type of record to look up */
-                            NULL,                /* always NULL for QUERY */
-                            0,                   /* length of NULL */
-                            (u_char*) NULL,      /* always NULL */
-                            (u_char*) msg4,      /* query buffer */
-                            NS_PACKETSZ          /* query buffer size */
-                           );
-  if(msg4len == -1)
-    herror("res_mkquery(...)");
   
-  /* create a AAAA query message */
-  u_char msg6[NS_PACKETSZ];
-  int msg6len = res_mkquery(
-                            ns_o_query,          /* regular query */
-                            domain,              /* domain name to look up */
-                            ns_c_in,             /* internet type */
-                            ns_t_aaaa,           /* type of record to look up */
-                            NULL,                /* always NULL for QUERY */
-                            0,                   /* length of NULL */
-                            (u_char*) NULL,      /* always NULL */
-                            (u_char*) msg6,      /* query buffer */
-                            NS_PACKETSZ          /* query buffer size */
-                           );
-  if(msg6len == -1) 
-    herror("res_mkquery(...)");
+  while(optind < argc) {
+
+    domain = argv[optind++];
+    printf("\n%s\n", domain);
+
+    /* create a A query message */
+    u_char msg4[NS_PACKETSZ];
+    int msg4len = res_mkquery(
+                              ns_o_query,       /* regular query */
+                              domain,           /* domain name to look up */
+                              ns_c_in,          /* internet type */
+                              ns_t_a,           /* type of record to look up */
+                              NULL,             /* always NULL for QUERY */
+                              0,                /* length of NULL */
+                              (u_char*) NULL,   /* always NULL */
+                              (u_char*) msg4,   /* query buffer */
+                              NS_PACKETSZ       /* query buffer size */
+                             );
+    if(msg4len == -1)
+      herror("res_mkquery(...)");
+    
+    /* create a AAAA query message */
+    u_char msg6[NS_PACKETSZ];
+    int msg6len = res_mkquery(
+                              ns_o_query,       /* regular query */
+                              domain,           /* domain name to look up */
+                              ns_c_in,          /* internet type */
+                              ns_t_aaaa,        /* type of record to look up */
+                              NULL,             /* always NULL for QUERY */
+                              0,                /* length of NULL */
+                              (u_char*) NULL,   /* always NULL */
+                              (u_char*) msg6,   /* query buffer */
+                              NS_PACKETSZ       /* query buffer size */
+                             );
+    if(msg6len == -1) 
+      herror("res_mkquery(...)");
 
 
-  /* send the query message */
-  u_char answer4[NS_PACKETSZ];
-  int answer4len = res_send(
-                            (u_char*) msg4,         /* query buffer */
-                            msg4len,                /* true query length */
-                            (u_char*) answer4,      /* answer buffer */
-                            NS_PACKETSZ             /* answer buffer size */
-                           );
-  if(answer4len == -1)
-    herror("res_send(...)");
-  
-  /* send the query message */
-  u_char answer6[NS_PACKETSZ];
-  int answer6len = res_send(
-                            (u_char*) msg6,         /* query buffer */
-                            msg6len,                /* true query length */
-                            (u_char*) answer6,      /* answer buffer */
-                            NS_PACKETSZ             /* answer buffer size */
-                            );
-  if(answer6len == -1)
-    herror("res_send(...)");
+    /* send the query message */
+    u_char answer4[NS_PACKETSZ];
+    int answer4len = res_send(
+                              (u_char*) msg4,       /* query buffer */
+                              msg4len,              /* true query length */
+                              (u_char*) answer4,    /* answer buffer */
+                              NS_PACKETSZ           /* answer buffer size */
+                             );
+    if(answer4len == -1)
+      herror("res_send(...)");
+    
+    /* send the query message */
+    u_char answer6[NS_PACKETSZ];
+    int answer6len = res_send(
+                              (u_char*) msg6,       /* query buffer */
+                              msg6len,              /* true query length */
+                              (u_char*) answer6,    /* answer buffer */
+                              NS_PACKETSZ           /* answer buffer size */
+                              );
+    if(answer6len == -1)
+      herror("res_send(...)");
 
-  echoaddr(answer4, answer4len);
-  echoaddr(answer6, answer6len);
-
+    echoaddr(answer4, answer4len);
+    echoaddr(answer6, answer6len);
+  }
   return(EXIT_SUCCESS);
 }
