@@ -39,6 +39,8 @@
 #include <string.h>
 #include <unistd.h>
 
+#define DEFAULT_NS "8.8.8.8"
+
 int main(int argc, char* argv[]) {
 
   /* parse command line arguments */
@@ -59,14 +61,41 @@ int main(int argc, char* argv[]) {
     }
   }
 
-  if (ns != NULL) printf("selected nameserver: %s\n", ns);
-
   if (argc != optind + 1) {
     printf("usage: %s [-s namesever] host", argv[0]);
     exit(EXIT_FAILURE);
   } else
     domain = argv[optind];
 
+  /* change the default behavior of resolver routines */
+  res_init();
+  _res.nscount = 1;
+  if (ns == NULL) ns = DEFAULT_NS;
+  if (
+       inet_pton(
+                 AF_INET,                       /* IPv4 address format */
+                 ns,                            /* ns in presentation format */
+                 &_res.nsaddr_list[0].sin_addr  /* ns in network format */
+                ) <= 0
+     ) {
+         perror("inet_pton(...)");
+         exit(EXIT_FAILURE);
+  }
+
+  ns = calloc(1, INET_ADDRSTRLEN);
+  if (
+       inet_ntop(
+                 AF_INET,                       /* IPv4 address format */
+                 &_res.nsaddr_list[0].sin_addr, /* ns in network format */
+                 ns,                            /* ns in presentation format */
+                 INET_ADDRSTRLEN                /* size of dst address */
+                ) == NULL
+     ) {
+         perror("inet_ntop(...)");
+         exit(EXIT_FAILURE);
+  }
+  printf("using nameserver: %s\n", ns);
+  free(ns); ns = NULL;
 
   /* create a query message */
   u_char msg[NS_PACKETSZ];
