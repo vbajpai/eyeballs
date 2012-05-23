@@ -41,6 +41,120 @@
 
 #define DEFAULT_NS "8.8.8.8"
 
+void
+echoaddr(
+         const u_char* const answer,
+         const int answerlen
+        ) {
+
+  /* initialize data structure to store the parsed response */
+  ns_msg handle;
+  if (
+      ns_initparse(
+                   answer,      /* answer buffer */
+                   answerlen,   /* true answer length */
+                   &handle      /* data structure filled in by ns_initparse */
+                   ) < 0
+      )
+    herror("ns_initparse(...)");
+
+  /* iterate over each resource record */
+  ns_rr rr;
+  for (int rrnum = 0; ; rrnum++) {
+
+    /* parse the answer section of the resource record */
+    if (
+        ns_parserr(
+                   &handle, /* data structure filled by ns_initparse */
+                   ns_s_an, /* resource record answer section */
+                   rrnum,   /* index of the resource record in this section */
+                   &rr      /* data structure filled in by ns_parseerr */
+                   ) < 0
+        ) {
+
+      /* continue to the next resource records if this cannot be parsed */
+      if (errno != ENODEV) {
+        herror("ns_parserr(...)");
+        continue;
+      }
+
+      /* break out of the loop when all resource records have been read */
+      break;
+    }
+
+    /* get A and AAAA in a presentation format */
+    char* dst = NULL;
+    switch (ns_rr_type(rr)) {
+
+        /* type: A record */
+      case ns_t_a:
+        if (ns_rr_rdlen(rr) != (size_t)NS_INADDRSZ) {
+          fprintf(stderr, "RR format error");
+          break;
+        }
+        dst = calloc(1, INET_ADDRSTRLEN);
+        if (dst == NULL) {
+          perror("calloc(...)");
+          exit(EXIT_FAILURE);
+        }
+        if (
+            inet_ntop(
+                      AF_INET,         /* IPv4 address format */
+                      ns_rr_rdata(rr), /* src address in network format */
+                      dst,             /* dst address in presentation format */
+                      INET_ADDRSTRLEN  /* size of dst address */
+                      ) == NULL
+            ) {
+          perror("inet_ntop(...)");
+          free(dst); dst = NULL;
+          break;
+        }
+        break;
+
+        /* type: AAAA record */
+      case ns_t_aaaa:
+        if (ns_rr_rdlen(rr) != (size_t)NS_IN6ADDRSZ) {
+          fprintf(stderr, "RR format error");
+          break;
+        }
+        dst = calloc(1, INET6_ADDRSTRLEN);
+        if (dst == NULL) {
+          perror("calloc(...)");
+          exit(EXIT_FAILURE);
+        }
+        if (
+            inet_ntop(
+                      AF_INET6,         /* IPv6 address format */
+                      ns_rr_rdata(rr),  /* src address in network format */
+                      dst,              /* dst address in presentation format */
+                      INET6_ADDRSTRLEN  /* size of dst address */
+                      ) == NULL
+            ) {
+          perror("inet_ntop(...)");
+          free(dst); dst = NULL;
+          break;
+        }
+        break;
+
+        /* type: CNAME record */
+      case ns_t_cname:
+        fprintf(stderr, "CNAME\n");
+        break;
+
+        /* ignore all the other types */
+      default:
+        break;
+    }
+
+    /* echo the presentation format */
+    if (dst != NULL) {
+      fputs(dst, stdout); fputc('\n', stdout);
+      free(dst); dst = NULL;
+    }
+  }
+
+}
+
 int main(int argc, char* argv[]) {
 
   /* parse command line arguments */
@@ -97,138 +211,63 @@ int main(int argc, char* argv[]) {
   printf("using nameserver: %s\n", ns);
   free(ns); ns = NULL;
 
-  /* create a query message */
-  u_char msg[NS_PACKETSZ];
-  int msglen = res_mkquery(
-                           ns_o_query,          /* regular query */
-                           domain,              /* domain name to look up */
-                           ns_c_in,             /* internet type */
-                           type,                /* type of record to look up */
-                           NULL,                /* always NULL for QUERY */
-                           0,                   /* length of NULL */
-                           (u_char*) NULL,      /* always NULL */
-                           (u_char*) msg,       /* query buffer */
-                           sizeof(msg)          /* query buffer size */
-                          );
-  if(msglen == -1)
+  /* create a A query message */
+  u_char msg4[NS_PACKETSZ];
+  int msg4len = res_mkquery(
+                            ns_o_query,          /* regular query */
+                            domain,              /* domain name to look up */
+                            ns_c_in,             /* internet type */
+                            ns_t_a,              /* type of record to look up */
+                            NULL,                /* always NULL for QUERY */
+                            0,                   /* length of NULL */
+                            (u_char*) NULL,      /* always NULL */
+                            (u_char*) msg4,      /* query buffer */
+                            NS_PACKETSZ          /* query buffer size */
+                           );
+  if(msg4len == -1)
+    herror("res_mkquery(...)");
+  
+  /* create a AAAA query message */
+  u_char msg6[NS_PACKETSZ];
+  int msg6len = res_mkquery(
+                            ns_o_query,          /* regular query */
+                            domain,              /* domain name to look up */
+                            ns_c_in,             /* internet type */
+                            ns_t_aaaa,           /* type of record to look up */
+                            NULL,                /* always NULL for QUERY */
+                            0,                   /* length of NULL */
+                            (u_char*) NULL,      /* always NULL */
+                            (u_char*) msg6,      /* query buffer */
+                            NS_PACKETSZ          /* query buffer size */
+                           );
+  if(msg6len == -1) 
     herror("res_mkquery(...)");
 
+
   /* send the query message */
-  u_char answer[NS_PACKETSZ];
-  int answerlen = res_send(
-                           (u_char*) msg,          /* query buffer */
-                           msglen,                 /* true query length */
-                           (u_char*) answer,       /* answer buffer */
-                           sizeof(answer)          /* answer buffer size */
-                          );
-  if(answerlen == -1)
+  u_char answer4[NS_PACKETSZ];
+  int answer4len = res_send(
+                            (u_char*) msg4,         /* query buffer */
+                            msg4len,                /* true query length */
+                            (u_char*) answer4,      /* answer buffer */
+                            NS_PACKETSZ             /* answer buffer size */
+                           );
+  if(answer4len == -1)
+    herror("res_send(...)");
+  
+  /* send the query message */
+  u_char answer6[NS_PACKETSZ];
+  int answer6len = res_send(
+                            (u_char*) msg6,         /* query buffer */
+                            msg6len,                /* true query length */
+                            (u_char*) answer6,      /* answer buffer */
+                            NS_PACKETSZ             /* answer buffer size */
+                            );
+  if(answer6len == -1)
     herror("res_send(...)");
 
-  /* initialize data structure to store the parsed response */
-  ns_msg handle;
-  if (
-      ns_initparse(
-                   answer,      /* answer buffer */
-                   answerlen,   /* true answer length */
-                   &handle      /* data structure filled in by ns_initparse */
-                  ) < 0
-     )
-    herror("ns_initparse(...)");
-
-  /* iterate over each resource record */
-  ns_rr rr;
-  for (int rrnum = 0; ; rrnum++) {
-
-    /* parse the answer section of the resource record */
-    if (
-        ns_parserr(
-                   &handle, /* data structure filled by ns_initparse */
-                   ns_s_an, /* resource record answer section */
-                   rrnum,   /* index of the resource record in this section */
-                   &rr      /* data structure filled in by ns_parseerr */
-                  ) < 0
-       ) {
-
-      /* continue to the next resource records if this cannot be parsed */
-      if (errno != ENODEV) {
-        herror("ns_parserr(...)");
-        continue;
-      }
-
-      /* break out of the loop when all resource records have been read */
-      break;
-    }
-
-    /* get A and AAAA in a presentation format */
-    char* dst = NULL;
-    switch (ns_rr_type(rr)) {
-
-      /* type: A record */
-      case ns_t_a:
-        if (ns_rr_rdlen(rr) != (size_t)NS_INADDRSZ) {
-          fprintf(stderr, "RR format error");
-          break;
-        }
-        dst = calloc(1, INET_ADDRSTRLEN);
-        if (dst == NULL) {
-          perror("calloc(...)");
-          exit(EXIT_FAILURE);
-        }
-        if (
-             inet_ntop(
-                       AF_INET,         /* IPv4 address format */
-                       ns_rr_rdata(rr), /* src address in network format */
-                       dst,             /* dst address in presentation format */
-                       INET_ADDRSTRLEN  /* size of dst address */
-                      ) == NULL
-           ) {
-          perror("inet_ntop(...)");
-          free(dst); dst = NULL;
-          break;
-        }
-        break;
-
-      /* type: AAAA record */
-      case ns_t_aaaa:
-        if (ns_rr_rdlen(rr) != (size_t)NS_IN6ADDRSZ) {
-          fprintf(stderr, "RR format error");
-          break;
-        }
-        dst = calloc(1, INET6_ADDRSTRLEN);
-        if (dst == NULL) {
-          perror("calloc(...)");
-          exit(EXIT_FAILURE);
-        }
-        if (
-            inet_ntop(
-                      AF_INET6,         /* IPv6 address format */
-                      ns_rr_rdata(rr),  /* src address in network format */
-                      dst,              /* dst address in presentation format */
-                      INET6_ADDRSTRLEN  /* size of dst address */
-                     ) == NULL
-           ) {
-          perror("inet_ntop(...)");
-          free(dst); dst = NULL;
-          break;
-        }
-        break;
-
-      /* type: CNAME record */
-      case ns_t_cname:
-        fprintf(stderr, "CNAME\n");
-        break;
-
-      /* ignore all the other types */
-      default:
-        break;
-    }
- 
-    /* echo the presentation format */
-    if (dst != NULL) {
-      fputs(dst, stdout); fputc('\n', stdout);
-      free(dst); dst = NULL;
-    }
-  }
+  echoaddr(answer4, answer4len);
+  echoaddr(answer6, answer6len);
 
   return(EXIT_SUCCESS);
 }
