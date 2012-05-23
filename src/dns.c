@@ -40,6 +40,66 @@
 #include <unistd.h>
 
 #define DEFAULT_NS "8.8.8.8"
+#define DEFAULT_DNS_PORT 53
+
+int
+send_query(
+           u_char* msg,
+           int msglen,
+           u_char* answer,
+           int answerlen
+          ) {
+
+  /* create a v4 socket */
+  int sockfd = socket (
+                       AF_INET,      /* communication domain: v4 */
+                       SOCK_DGRAM,   /* socket type: connectionless datagram */
+                       0             /* communication protocol: v4 */
+                       );
+  if (sockfd < 0) {
+    perror("socket(...)");
+    return -1;
+  }
+
+  /* create a v4 socket address structure */
+  struct sockaddr_in v4addr;
+  memset(&v4addr, 0, sizeof(struct sockaddr_in));
+  v4addr.sin_family = AF_INET;
+  v4addr.sin_port = htons(DEFAULT_DNS_PORT);
+  v4addr.sin_addr = _res.nsaddr_list[0].sin_addr;
+
+  /* send msg using the v4 socket */
+  if (
+      sendto (
+              sockfd,                            /* socket descriptor */
+              msg,                               /* send buffer */
+              msglen,                            /* send buffer length */
+              0,                                 /* flags */
+              (struct sockaddr*) &v4addr,        /* target address */
+              sizeof(struct sockaddr_in)         /* target address size */
+              ) < 0
+      ) {
+    perror("sendto(...)");
+    return -1;
+  }
+
+  /* receive answer using the v4 socket */
+  ssize_t truelen = recvfrom (
+                              sockfd,         /* socket descriptor */
+                              answer,         /* receive buffer */
+                              answerlen,      /* receive buffer length */
+                              0,              /* flags */
+                              NULL,           /* source address */
+                              NULL            /* source address length */
+                             );
+  if (truelen < 0) {
+    perror("recvfrom(...)");
+    return -1;
+  }
+
+  return truelen;
+}
+
 
 void
 echoaddr(
@@ -86,7 +146,7 @@ echoaddr(
     char* dst = NULL;
     switch (ns_rr_type(rr)) {
 
-        /* type: A record */
+      /* type: A record */
       case ns_t_a:
         if (ns_rr_rdlen(rr) != (size_t)NS_INADDRSZ) {
           fprintf(stderr, "RR format error");
@@ -111,7 +171,7 @@ echoaddr(
         }
         break;
 
-        /* type: AAAA record */
+      /* type: AAAA record */
       case ns_t_aaaa:
         if (ns_rr_rdlen(rr) != (size_t)NS_IN6ADDRSZ) {
           fprintf(stderr, "RR format error");
@@ -136,12 +196,12 @@ echoaddr(
         }
         break;
 
-        /* type: CNAME record */
+      /* type: CNAME record */
       case ns_t_cname:
         fprintf(stderr, "CNAME\n");
         break;
 
-        /* ignore all the other types */
+      /* ignore all the other types */
       default:
         break;
     }
@@ -161,15 +221,15 @@ int main(int argc, char* argv[]) {
   int opt; char* ns = NULL; char* domain = NULL;
   while ((opt = getopt(argc, argv, "s:t:")) != -1) {
     switch (opt) {
-      case 's': 
+      case 's':
         ns = optarg; break;
     }
-  }  
+  }
   if (argc == optind) {
     printf("usage: %s [-s namesever] host", argv[0]);
     exit(EXIT_FAILURE);
   }
-  
+
   /* change the default behavior of resolver routines */
   res_init();
   _res.nscount = 1;
@@ -184,7 +244,7 @@ int main(int argc, char* argv[]) {
     perror("inet_pton(...)");
     exit(EXIT_FAILURE);
   }
-  
+
   ns = calloc(1, INET_ADDRSTRLEN);
   if (
       inet_ntop(
@@ -199,7 +259,7 @@ int main(int argc, char* argv[]) {
   }
   printf("using nameserver: %s\n", ns);
   free(ns); ns = NULL;
-  
+
   while(optind < argc) {
 
     domain = argv[optind++];
@@ -220,7 +280,7 @@ int main(int argc, char* argv[]) {
                              );
     if(msg4len == -1)
       herror("res_mkquery(...)");
-    
+
     /* create a AAAA query message */
     u_char msg6[NS_PACKETSZ];
     int msg6len = res_mkquery(
@@ -234,34 +294,37 @@ int main(int argc, char* argv[]) {
                               (u_char*) msg6,   /* query buffer */
                               NS_PACKETSZ       /* query buffer size */
                              );
-    if(msg6len == -1) 
+    if(msg6len == -1)
       herror("res_mkquery(...)");
-
 
     /* send the query message */
     u_char answer4[NS_PACKETSZ];
-    int answer4len = res_send(
-                              (u_char*) msg4,       /* query buffer */
-                              msg4len,              /* true query length */
-                              (u_char*) answer4,    /* answer buffer */
-                              NS_PACKETSZ           /* answer buffer size */
-                             );
-    if(answer4len == -1)
-      herror("res_send(...)");
+    int answer4len = send_query(
+                                (u_char*) msg4,       /* query buffer */
+                                msg4len,              /* true query length */
+                                (u_char*) answer4,    /* answer buffer */
+                                NS_PACKETSZ           /* answer buffer size */
+                               );
+    if(answer4len == -1) {
+      perror("send_query(...)");
+      continue;
+    }
     
     /* send the query message */
     u_char answer6[NS_PACKETSZ];
-    int answer6len = res_send(
-                              (u_char*) msg6,       /* query buffer */
-                              msg6len,              /* true query length */
-                              (u_char*) answer6,    /* answer buffer */
-                              NS_PACKETSZ           /* answer buffer size */
-                              );
-    if(answer6len == -1)
-      herror("res_send(...)");
-
+    int answer6len = send_query(
+                                (u_char*) msg6,       /* query buffer */
+                                msg6len,              /* true query length */
+                                (u_char*) answer6,    /* answer buffer */
+                                NS_PACKETSZ           /* answer buffer size */
+                               );
+    if(answer6len == -1) {
+      perror("send_query(...)");
+      continue;
+    }
+    
     echoaddr(answer4, answer4len);
-    echoaddr(answer6, answer6len);
+    echoaddr(answer6, answer6len);    
   }
   return(EXIT_SUCCESS);
 }
