@@ -42,65 +42,6 @@
 #define DEFAULT_NS "8.8.8.8"
 #define DEFAULT_DNS_PORT 53
 
-int
-send_query(
-           u_char* msg,
-           int msglen,
-           u_char* answer,
-           int answerlen
-          ) {
-
-  /* create a v4 socket */
-  int sockfd = socket (
-                       AF_INET,      /* communication domain: v4 */
-                       SOCK_DGRAM,   /* socket type: connectionless datagram */
-                       0             /* communication protocol: v4 */
-                       );
-  if (sockfd < 0) {
-    perror("socket(...)");
-    return -1;
-  }
-
-  /* create a v4 socket address structure */
-  struct sockaddr_in v4addr;
-  memset(&v4addr, 0, sizeof(struct sockaddr_in));
-  v4addr.sin_family = AF_INET;
-  v4addr.sin_port = htons(DEFAULT_DNS_PORT);
-  v4addr.sin_addr = _res.nsaddr_list[0].sin_addr;
-
-  /* send msg using the v4 socket */
-  if (
-      sendto (
-              sockfd,                            /* socket descriptor */
-              msg,                               /* send buffer */
-              msglen,                            /* send buffer length */
-              0,                                 /* flags */
-              (struct sockaddr*) &v4addr,        /* target address */
-              sizeof(struct sockaddr_in)         /* target address size */
-              ) < 0
-      ) {
-    perror("sendto(...)");
-    return -1;
-  }
-
-  /* receive answer using the v4 socket */
-  ssize_t truelen = recvfrom (
-                              sockfd,         /* socket descriptor */
-                              answer,         /* receive buffer */
-                              answerlen,      /* receive buffer length */
-                              0,              /* flags */
-                              NULL,           /* source address */
-                              NULL            /* source address length */
-                             );
-  if (truelen < 0) {
-    perror("recvfrom(...)");
-    return -1;
-  }
-
-  return truelen;
-}
-
-
 void
 echoaddr(
          const u_char* const answer,
@@ -215,6 +156,72 @@ echoaddr(
 
 }
 
+int
+send_query(
+           u_char* msg,
+           int msglen
+          ) {
+
+  /* create a v4 socket */
+  int sockfd = socket (
+                       AF_INET,      /* communication domain: v4 */
+                       SOCK_DGRAM,   /* socket type: connectionless datagram */
+                       0             /* communication protocol: v4 */
+                      );
+  if (sockfd < 0) {
+    perror("socket(...)");
+    return -1;
+  }
+
+  /* create a v4 socket address structure */
+  struct sockaddr_in v4addr;
+  memset(&v4addr, 0, sizeof(struct sockaddr_in));
+  v4addr.sin_family = AF_INET;
+  v4addr.sin_port = htons(DEFAULT_DNS_PORT);
+  v4addr.sin_addr = _res.nsaddr_list[0].sin_addr;
+
+  /* send msg using the v4 socket */
+  if (
+      sendto (
+              sockfd,                            /* socket descriptor */
+              msg,                               /* send buffer */
+              msglen,                            /* send buffer length */
+              0,                                 /* flags */
+              (struct sockaddr*) &v4addr,        /* target address */
+              sizeof(struct sockaddr_in)         /* target address size */
+              ) < 0
+      ) {
+    perror("sendto(...)");
+    return -1;
+  }
+
+  return sockfd;
+}
+
+void receive_response_and_echo(
+                               int sockfd
+                              ) {
+
+  /* receive answer using the provided socket */
+  u_char answer[NS_PACKETSZ];
+  ssize_t answerlen = recvfrom (
+                                sockfd,         /* socket descriptor */
+                                answer,         /* receive buffer */
+                                NS_PACKETSZ,    /* receive buffer length */
+                                0,              /* flags */
+                                NULL,           /* source address */
+                                NULL            /* source address length */
+                               );
+  if (answerlen < 0) {
+    perror("recvfrom(...)");
+    return;
+  }
+
+  /* echo the answer */
+  echoaddr(answer, answerlen);
+
+}
+
 int main(int argc, char* argv[]) {
 
   /* parse command line arguments */
@@ -298,33 +305,64 @@ int main(int argc, char* argv[]) {
       herror("res_mkquery(...)");
 
     /* send the query message */
-    u_char answer4[NS_PACKETSZ];
-    int answer4len = send_query(
-                                (u_char*) msg4,       /* query buffer */
-                                msg4len,              /* true query length */
-                                (u_char*) answer4,    /* answer buffer */
-                                NS_PACKETSZ           /* answer buffer size */
-                               );
-    if(answer4len == -1) {
+    int sockv4query = send_query(
+                                 (u_char*) msg4,       /* query buffer */
+                                 msg4len               /* true query length */
+                                );
+    if(sockv4query == -1) {
       perror("send_query(...)");
       continue;
     }
-    
+
     /* send the query message */
-    u_char answer6[NS_PACKETSZ];
-    int answer6len = send_query(
-                                (u_char*) msg6,       /* query buffer */
-                                msg6len,              /* true query length */
-                                (u_char*) answer6,    /* answer buffer */
-                                NS_PACKETSZ           /* answer buffer size */
-                               );
-    if(answer6len == -1) {
+    int sockv6query = send_query(
+                                 (u_char*) msg6,       /* query buffer */
+                                 msg6len               /* true query length */
+                                );
+    if(sockv6query == -1) {
       perror("send_query(...)");
       continue;
     }
-    
-    echoaddr(answer4, answer4len);
-    echoaddr(answer6, answer6len);    
+
+    /* an event driven loop */ 
+    fd_set readfds; FD_ZERO(&readfds);
+    int waiting = 2;
+    while(waiting) {
+
+      FD_SET(sockv4query, &readfds);
+      FD_SET(sockv6query, &readfds);
+
+      /* one greater than the highest fd number */
+      int nfds = (sockv4query > sockv6query ? sockv4query : sockv6query) + 1;
+
+      if (
+         select(
+                 nfds,         /* number of fds */
+                 &readfds,     /* set of read fds */
+                 NULL,         /* set of write fds */
+                 NULL,         /* set of exception fds */
+                 NULL          /* maximum wait interval */
+               ) < 0
+       ) {
+        perror("select(...)");
+        continue;
+      } else {
+
+        /* one or more descriptors are ready */
+        if(FD_ISSET(sockv4query, &readfds)) {
+          receive_response_and_echo(sockv4query);
+          waiting -= 1;
+        }
+        if(FD_ISSET(sockv6query, &readfds)) {
+          receive_response_and_echo(sockv6query);
+          waiting -= 1;
+        }
+      }
+    }
+
+    /* close the sockets */
+    close(sockv4query);
+    close(sockv6query);
   }
   return(EXIT_SUCCESS);
 }
