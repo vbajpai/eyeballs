@@ -28,7 +28,7 @@
  * policies, either expressed or implied, of the FreeBSD Project.
  */
 
-#define _GNU_SOURCE 
+#define _GNU_SOURCE
 
 #include <stdlib.h>
 #include <sys/types.h>
@@ -44,21 +44,21 @@
 #define DEFAULT_NS "8.8.8.8"
 #define DEFAULT_DNS_PORT 53
 
-char** 
+char**
 parse_response(
-         const u_char* const answer,
-         const int answerlen,
-         int* buflen
-        ) {
+                const u_char* const answer,
+                const int answerlen,
+                int* buflen
+              ) {
 
   /* initialize data structure to store the parsed response */
   ns_msg handle;
   if (
       ns_initparse(
-                   answer,      /* answer buffer */
-                   answerlen,   /* true answer length */
-                   &handle      /* data structure filled in by ns_initparse */
-                   ) < 0
+                    answer,     /* answer buffer */
+                    answerlen,  /* true answer length */
+                    &handle     /* data structure filled in by ns_initparse */
+                  ) < 0
       )
     herror("ns_initparse(...)");
 
@@ -73,13 +73,13 @@ parse_response(
 
     /* parse the answer section of the resource record */
     if (
-        ns_parserr(
-                   &handle, /* data structure filled by ns_initparse */
-                   ns_s_an, /* resource record answer section */
-                   rrnum,   /* index of the resource record in this section */
-                   &rr      /* data structure filled in by ns_parseerr */
+         ns_parserr(
+                     &handle, /* data structure filled by ns_initparse */
+                     ns_s_an, /* resource record answer section */
+                     rrnum,   /* resource record index in this section */
+                     &rr      /* data structure filled in by ns_parseerr */
                    ) < 0
-        ) {
+       ) {
 
       /* continue to the next resource records if this cannot be parsed */
       if (errno != ENODEV) {
@@ -107,11 +107,11 @@ parse_response(
           exit(EXIT_FAILURE);
         }
         if (
-            inet_ntop(
-                      AF_INET,         /* IPv4 address format */
-                      ns_rr_rdata(rr), /* src address in network format */
-                      dst,             /* dst address in presentation format */
-                      INET_ADDRSTRLEN  /* size of dst address */
+             inet_ntop(
+                        AF_INET,         /* IPv4 address format */
+                        ns_rr_rdata(rr), /* src address in network fmt */
+                        dst,             /* dst address in presentation fmt */
+                        INET_ADDRSTRLEN  /* size of dst address */
                       ) == NULL
             ) {
           perror("inet_ntop(...)");
@@ -132,13 +132,13 @@ parse_response(
           exit(EXIT_FAILURE);
         }
         if (
-            inet_ntop(
-                      AF_INET6,         /* IPv6 address format */
-                      ns_rr_rdata(rr),  /* src address in network format */
-                      dst,       /* dst address in presentation format */
-                      INET6_ADDRSTRLEN  /* size of dst address */
+             inet_ntop(
+                        AF_INET6,        /* IPv6 address format */
+                        ns_rr_rdata(rr), /* src address in network fmt */
+                        dst,             /* dst address in presentation fmt */
+                        INET6_ADDRSTRLEN /* size of dst address */
                       ) == NULL
-            ) {
+           ) {
           perror("inet_ntop(...)");
           free(dst); dst = NULL;
           break;
@@ -154,12 +154,11 @@ parse_response(
       default:
         break;
     }
-    
+
     dstset = realloc(dstset, (rrnum + 1) * sizeof(char*));
     dstset[rrnum] = dst;
-
   }
-  
+
   *buflen = rrnum;
   return dstset;
 }
@@ -172,9 +171,9 @@ send_query(
 
   /* create a v4 socket */
   int sockfd = socket (
-                       AF_INET,      /* communication domain: v4 */
-                       SOCK_DGRAM,   /* socket type: connectionless datagram */
-                       0             /* communication protocol: v4 */
+                        AF_INET,    /* communication domain: v4 */
+                        SOCK_DGRAM, /* socket type: connectionless datagram */
+                        0           /* communication protocol: v4 */
                       );
   if (sockfd < 0) {
     perror("socket(...)");
@@ -191,13 +190,13 @@ send_query(
   /* send msg using the v4 socket */
   if (
       sendto (
-              sockfd,                            /* socket descriptor */
-              msg,                               /* send buffer */
-              msglen,                            /* send buffer length */
-              0,                                 /* flags */
-              (struct sockaddr*) &v4addr,        /* target address */
-              sizeof(struct sockaddr_in)         /* target address size */
-              ) < 0
+               sockfd,                            /* socket descriptor */
+               msg,                               /* send buffer */
+               msglen,                            /* send buffer length */
+               0,                                 /* flags */
+               (struct sockaddr*) &v4addr,        /* target address */
+               sizeof(struct sockaddr_in)         /* target address size */
+             ) < 0
       ) {
     perror("sendto(...)");
     return -1;
@@ -215,12 +214,12 @@ receive_response(
 
   /* receive answer using the provided socket */
   ssize_t truelen = recvfrom (
-                              sockfd,         /* socket descriptor */
-                              (void*)answer,  /* receive buffer */
-                              answerlen,      /* receive buffer length */
-                              0,              /* flags */
-                              NULL,           /* source address */
-                              NULL            /* source address length */
+                               sockfd,         /* socket descriptor */
+                               (void*)answer,  /* receive buffer */
+                               answerlen,      /* receive buffer length */
+                               0,              /* flags */
+                               NULL,           /* source address */
+                               NULL            /* source address length */
                              );
   if (truelen < 0) {
     perror("recvfrom(...)");
@@ -228,11 +227,10 @@ receive_response(
   }
 
   return truelen;
-
 }
 
 int main(
-         int argc, 
+         int argc,
          char* argv[]
         ) {
 
@@ -255,10 +253,10 @@ int main(
   if (ns == NULL) ns = DEFAULT_NS;
   if (
       inet_pton(
-                AF_INET,                         /* IPv4 address fmt */
-                ns,                              /* ns in presentation fmt */
-                &_res.nsaddr_list[0].sin_addr    /* ns in network fmt */
-                ) <= 0
+                 AF_INET,                         /* IPv4 address fmt */
+                 ns,                              /* ns in presentation fmt */
+                 &_res.nsaddr_list[0].sin_addr    /* ns in network fmt */
+               ) <= 0
       ) {
     perror("inet_pton(...)");
     exit(EXIT_FAILURE);
@@ -267,11 +265,11 @@ int main(
   ns = calloc(1, INET_ADDRSTRLEN);
   if (
       inet_ntop(
-                AF_INET,                         /* IPv4 address fmt */
-                &_res.nsaddr_list[0].sin_addr,   /* ns in network fmt */
-                ns,                              /* ns in presentation fmt */
-                INET_ADDRSTRLEN                  /* size of dst address */
-                ) == NULL
+                 AF_INET,                         /* IPv4 address fmt */
+                 &_res.nsaddr_list[0].sin_addr,   /* ns in network fmt */
+                 ns,                              /* ns in presentation fmt */
+                 INET_ADDRSTRLEN                  /* size of dst address */
+               ) == NULL
       ) {
     perror("inet_ntop(...)");
     exit(EXIT_FAILURE);
@@ -287,15 +285,15 @@ int main(
     /* create a A query message */
     u_char msg4[NS_PACKETSZ];
     int msg4len = res_mkquery(
-                              ns_o_query,       /* regular query */
-                              domain,           /* domain name to look up */
-                              ns_c_in,          /* internet type */
-                              ns_t_a,           /* type of record to look up */
-                              NULL,             /* always NULL for QUERY */
-                              0,                /* length of NULL */
-                              (u_char*) NULL,   /* always NULL */
-                              (u_char*) msg4,   /* query buffer */
-                              NS_PACKETSZ       /* query buffer size */
+                               ns_o_query,     /* regular query */
+                               domain,         /* domain name to look up */
+                               ns_c_in,        /* internet type */
+                               ns_t_a,         /* type of record to look up */
+                               NULL,           /* always NULL for QUERY */
+                               0,              /* length of NULL */
+                               (u_char*) NULL, /* always NULL */
+                               (u_char*) msg4, /* query buffer */
+                               NS_PACKETSZ     /* query buffer size */
                              );
     if(msg4len == -1)
       herror("res_mkquery(...)");
@@ -303,23 +301,23 @@ int main(
     /* create a AAAA query message */
     u_char msg6[NS_PACKETSZ];
     int msg6len = res_mkquery(
-                              ns_o_query,       /* regular query */
-                              domain,           /* domain name to look up */
-                              ns_c_in,          /* internet type */
-                              ns_t_aaaa,        /* type of record to look up */
-                              NULL,             /* always NULL for QUERY */
-                              0,                /* length of NULL */
-                              (u_char*) NULL,   /* always NULL */
-                              (u_char*) msg6,   /* query buffer */
-                              NS_PACKETSZ       /* query buffer size */
+                               ns_o_query,     /* regular query */
+                               domain,         /* domain name to look up */
+                               ns_c_in,        /* internet type */
+                               ns_t_aaaa,      /* type of record to look up */
+                               NULL,           /* always NULL for QUERY */
+                               0,              /* length of NULL */
+                               (u_char*) NULL, /* always NULL */
+                               (u_char*) msg6, /* query buffer */
+                               NS_PACKETSZ     /* query buffer size */
                              );
     if(msg6len == -1)
       herror("res_mkquery(...)");
 
     /* send the query message */
     int sockv4query = send_query(
-                                 (u_char*) msg4,       /* query buffer */
-                                 msg4len               /* true query length */
+                                  (u_char*) msg4,     /* query buffer */
+                                  msg4len             /* true query length */
                                 );
     if(sockv4query == -1) {
       perror("send_query(...)");
@@ -328,15 +326,15 @@ int main(
 
     /* send the query message */
     int sockv6query = send_query(
-                                 (u_char*) msg6,       /* query buffer */
-                                 msg6len               /* true query length */
+                                 (u_char*) msg6,     /* query buffer */
+                                 msg6len             /* true query length */
                                 );
     if(sockv6query == -1) {
       perror("send_query(...)");
       continue;
     }
 
-    /* an event driven loop */ 
+    /* an event driven loop */
     fd_set readfds; FD_ZERO(&readfds);
     int waiting = 2;
     while(waiting) {
@@ -348,14 +346,14 @@ int main(
       int nfds = (sockv4query > sockv6query ? sockv4query : sockv6query) + 1;
 
       if (
-         select(
-                 nfds,         /* number of fds */
-                 &readfds,     /* set of read fds */
-                 NULL,         /* set of write fds */
-                 NULL,         /* set of exception fds */
-                 NULL          /* maximum wait interval */
-               ) < 0
-       ) {
+           select(
+                   nfds,         /* number of fds */
+                   &readfds,     /* set of read fds */
+                   NULL,         /* set of write fds */
+                   NULL,         /* set of exception fds */
+                   NULL          /* maximum wait interval */
+                 ) < 0
+         ) {
         perror("select(...)");
         continue;
       } else {
@@ -363,11 +361,11 @@ int main(
         /* one or more descriptors are ready */
         if(FD_ISSET(sockv4query, &readfds)) {
           u_char answer[NS_PACKETSZ];
-          ssize_t 
+          ssize_t
           answerlen = receive_response(
-                                       sockv4query, /* socket descriptor */
-                                       answer,      /* receive buffer */
-                                       NS_PACKETSZ  /* receive buffer length */
+                                        sockv4query,  /* socket descriptor */
+                                        answer,       /* receive buffer */
+                                        NS_PACKETSZ   /* receive buffer len */
                                       );
 
           /* parse the received response */
@@ -377,31 +375,31 @@ int main(
             exit(EXIT_FAILURE);
           }
           bufset = parse_response(
-                                  answer,    /* received response */
-                                  answerlen, /* true response length */
-                                  &buflen    /* receive buffer length */
+                                  answer,        /* received response */
+                                  answerlen,     /* true response len */
+                                  &buflen        /* receive buffer len */
                                  );
-          /* echo the parsed response*/
+          /* echo the parsed response */
           for(int i = 0; i < buflen; i++)  puts(bufset[i]);
           waiting -= 1;
         }
-        
+
         if(FD_ISSET(sockv6query, &readfds)) {
           u_char answer[NS_PACKETSZ];
-          ssize_t 
+          ssize_t
           answerlen = receive_response(
-                                       sockv6query, /* socket descriptor */
-                                       answer,      /* receive buffer */
-                                       NS_PACKETSZ  /* receive buffer length */
-                                       );
+                                        sockv6query, /* socket descriptor */
+                                        answer,      /* receive buffer */
+                                        NS_PACKETSZ  /* receive buffer len */
+                                      );
 
           /* parse the received response */
           int buflen = 0;
           char** bufset = parse_response(
-                                         answer,    /* received response */
-                                         answerlen, /* true response length */
-                                         &buflen    /* receive buffer length */
-                                        ); 
+                                          answer,    /* received response */
+                                          answerlen, /* true response len */
+                                          &buflen    /* receive buffer len */
+                                        );
           /* echo the parsed response */
           for(int i = 0; i < buflen; i++)  puts(bufset[i]);
           waiting -= 1;
